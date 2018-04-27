@@ -15,6 +15,16 @@ public class Router
     private ArrayList<peerInfo> adjacentRouters; //The list of routers that are directly connected
     private ArrayList<peerInfo> connectedRouters; //List of routers that have a path to
     private ArrayList<routes> forwardingTable;
+    
+    /*
+     * Message style sheet
+     * (,) seperates port, ip, and weight if applicable
+     * (:) seperates ^ entries
+     * (#) end of routing header, end of message type
+     * 
+     * 
+     * messageType - char('m' - sending a message, 'b' - broadcast of node)
+     */
     /**
      * Constructor for objects of class Node
      */
@@ -39,35 +49,70 @@ public class Router
         readFile(args[0]);
         
         SendUpdate sendUpdate = new SendUpdate();
-        ReceiveUpdate receiveUpdate = new ReceiveUpdate();
+        RecieveMessage recieveMessage = new RecieveMessage();
         sendUpdate.run();
-        receiveUpdate.run();
+        recieveMessage.run();
     }
     
-    //convert the list calculated distance vectors to a byte array 
+    //Creates the headers on a package
+    public byte[] createPackageMessage(peerInfo destination, char messageType, String message)
+    {
+        //byte[] pack;
+        String packet = ip + "," + port + ":" + destination.ip + "," + destination.port + "#";
+        packet += messageType + "#";
+        packet += message;
+        byte[] pack = packet.getBytes();
+        return pack;
+    }
+    
+    public byte[] createPackageMessage(peerInfo destination, char messageType, byte[] message)
+    {
+        //byte[] pack;
+        String packet = ip + "," + port + ":" + destination.ip + "," + destination.port + "#";
+        packet += messageType + "#";
+        packet += message;
+        byte[] pack = packet.getBytes();
+        return pack;
+    }
+    
+    public byte[] removePackageHeader(byte[] packet)
+    {
+        String temp = new String(packet);
+        String[] tokens = temp.split("#");
+        //System.out.println("Removed " + tokens[0] + "::::::" + tokens[1]);
+        //System.out.println("Leaving " + tokens[2]);
+        return tokens[2].getBytes();
+    }
+    
+    /*
+    public String ipFormat()
+    {
+       return ip + "," + por 
+    }*/
+    
+    //convert the list calculated distance vectors to a byte array
     //This is done, stop looking at it
     public byte[] convertToByteArray(ArrayList<peerInfo> connectedRouters)
     {
-        byte[] data = new byte[2048];
-        int index = 0;
+        byte[] data;
         String temp = "";
         for(peerInfo r : connectedRouters)
         {
             temp += r.ip + "," + r.port + "," + r.weight + ":";
         }
         data = temp.getBytes();
+        System.out.println(new String(data));
         return data;
     }
     
-
-	
     //Converts a recieved message, to an array list
     public ArrayList<peerInfo> convertToPeerInfoArray(byte[] byteArray)
     {
+        System.out.println("convertToPeerInfoArray");
         ArrayList<peerInfo> receivedDistances = new ArrayList<peerInfo>();
         String temp = new String(byteArray);
         String[] tokens = temp.split(":");
-        for(int x = 0; x < tokens.length - 1; x++)
+        for(int x = 0; x < tokens.length && tokens[x] != ""; x++)
         {
             System.out.print(tokens[x] + " ^ ");
             String[] parts = tokens[x].split(",");
@@ -81,7 +126,7 @@ public class Router
             link.weight = Integer.parseInt(parts[2]);
             receivedDistances.add(link);
         }
-        System.out.println("Cheese Credits");
+        System.out.println("Succesfully convered to peerInfoArray");
         for(peerInfo p : receivedDistances)
         {
             System.out.println(p.toString());
@@ -90,15 +135,30 @@ public class Router
     }
     
     //5 before 12
-    public ArrayList<peerInfo> calculateDistance(ArrayList<peerInfo> recievedDistances)
+    /**
+     * adjacent : the node info we are connecting through
+     * recieverDistances : the list of nodes that adjacent has
+     * Need to remove our own connection when calculating
+     */
+    public void calculateDistanceVector(peerInfo adjacent , ArrayList<peerInfo> recievedDistances)
     {
         //Need to calculate new distances
         for(peerInfo p : recievedDistances)
-		{
-			
-		}
+        {
+            boolean found = false; //If a match is not found, add the link to our connections
+            for(peerInfo m : connectedRouters)
+            {
+                if(p.isMatch(m)) //Hopefulyl this will be better for cache performance
+                {
+                    found = true; //We have found a match for this m.
+                    //calculate new distance, and update tabel if it is <
+                    
+                    break;
+                }
+            }
+        }
         //Updated forwarding table
-        return connectedRouters;
+        //return connectedRouters;
     }
     
     
@@ -118,11 +178,11 @@ public class Router
                             DatagramSocket socket = new DatagramSocket();
                             //Neeeds to be changed when using actual IP's
                             InetAddress IPAddress = InetAddress.getByName("localhost"); 
-                            byte[] sendData = convertToByteArray(connectedRouters);
+                            byte[] routes = convertToByteArray(connectedRouters);
+                            byte[] sendData = createPackageMessage(a, 'b', routes);
                             DatagramPacket sendPacket = new DatagramPacket
                                                         (sendData, sendData.length, IPAddress, a.port);
                             socket.send(sendPacket);
-                            
                         }
                     }catch(Exception e )
                     {
@@ -137,7 +197,7 @@ public class Router
         }
     }
     
-    public class ReceiveUpdate implements Runnable
+    public class RecieveMessage implements Runnable
     {
         @Override
         public void run()
@@ -149,8 +209,11 @@ public class Router
                 {
                     DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
                     socket.receive(receivePacket);
-                    System.out.println(receivePacket);
-                    ArrayList<peerInfo> nodes =  convertToPeerInfoArray(receivePacket.getData());
+                    System.out.println("Recieved :" + receivePacket.toString());
+                    byte[] packet = receivePacket.getData();
+                    packet = removePackageHeader(packet);
+                    ArrayList<peerInfo> nodes =  convertToPeerInfoArray(packet);
+                    //calculateDistanceVector(cheese, nodes);
                     //socket.close();
                 }
             }catch(Exception e){
@@ -208,9 +271,21 @@ class peerInfo
     public int port;
     public int weight;
     
+    public boolean isMatch(peerInfo other)
+    {
+        if(this.ip.equals(other.ip))
+        {
+            if(this.port == other.port)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    
     public String toString()
     {
-        return ip + ":" + port + " W>" + weight;
+        return ip + ":" + port + " W->" + weight;
     }
 }
 
