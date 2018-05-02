@@ -70,14 +70,40 @@ public class Router
         //byte[] pack;
         String packet = ip + "," + port + ":" + destination.ip + "," + destination.port + "#";
         packet += messageType + "#";
-        packet += message;
+        packet += new String(message);
+        //broken, adding message to the pack fuck its up
         byte[] pack = packet.getBytes();
+        //System.out.println("message: " + (new String(message)));
+        //System.out.println("pack: " + (new String(pack)));
         return pack;
+    }
+    
+    
+    public String[] breakHeaderMessage(String message)
+    {
+        return message.split("#");
+    }
+    
+    //call breakHEaderMEssageFirst, and pass in arg[0]
+    public peerInfo fromInfo(String headerSplit0)
+    {
+        peerInfo temp = new peerInfo();
+        String[] split = headerSplit0.split(":");
+        System.out.println(split[0]);
+        String[] info = split[0].split(",");
+        for(int i = 0; i < info.length; i ++)
+        {
+            System.out.println(i + " " + info[i]);
+        }
+        temp.ip = info[0];
+        temp.port = Integer.parseInt(info[1]);
+        return temp;
     }
     
     public byte[] removePackageHeader(byte[] packet)
     {
         String temp = new String(packet);
+        System.out.println(temp);
         String[] tokens = temp.split("#");
         //System.out.println("Removed " + tokens[0] + "::::::" + tokens[1]);
         //System.out.println("Leaving " + tokens[2]);
@@ -112,7 +138,35 @@ public class Router
         ArrayList<peerInfo> receivedDistances = new ArrayList<peerInfo>();
         String temp = new String(byteArray);
         String[] tokens = temp.split(":");
-        for(int x = 0; x < tokens.length && tokens[x] != ""; x++)
+        for(int x = 0; x < tokens.length -1; x++)
+        {
+            System.out.print(tokens[x] + " ^ ");
+            String[] parts = tokens[x].split(",");
+            peerInfo link = new peerInfo();
+            System.out.print(parts[0] + " ? ");
+            System.out.print(parts[1] + " ? ");
+            System.out.print(parts[2] + " ? ");
+            
+            link.ip = parts[0];
+            link.port = Integer.parseInt(parts[1]);
+            link.weight = Integer.parseInt(parts[2]);
+            receivedDistances.add(link);
+        }
+        System.out.println("Succesfully convered to peerInfoArray");
+        for(peerInfo p : receivedDistances)
+        {
+            System.out.println(p.toString());
+        }
+        return receivedDistances;
+    }
+    
+    public ArrayList<peerInfo> convertToPeerInfoArray(String message)
+    {
+        System.out.println("convertToPeerInfoArray String");
+        ArrayList<peerInfo> receivedDistances = new ArrayList<peerInfo>();
+        String temp = message;
+        String[] tokens = temp.split(":");
+        for(int x = 0; x < tokens.length -1; x++)
         {
             System.out.print(tokens[x] + " ^ ");
             String[] parts = tokens[x].split(",");
@@ -143,18 +197,59 @@ public class Router
     public void calculateDistanceVector(peerInfo adjacent , ArrayList<peerInfo> recievedDistances)
     {
         //Need to calculate new distances
-        for(peerInfo p : recievedDistances)
+        int weightOfConnection = -1; //Weightto adjacent router
+        peerInfo connected = new peerInfo();
+        //assunmes we are going to find a connection right now
+        for(peerInfo a : adjacentRouters)
         {
-            boolean found = false; //If a match is not found, add the link to our connections
-            for(peerInfo m : connectedRouters)
+            if(adjacent.isMatch(a))
             {
+                System.out.println("Robble" + a.toString());
+                weightOfConnection = a.weight;
+                connected = a;
+                break;
+            }
+        }
+        
+        for(int pc = 0; pc < recievedDistances.size(); pc ++)
+        {
+            peerInfo p = recievedDistances.get(pc);
+            boolean found = false; //If a match is not found, add the link to our connections
+            for(int mc = 0; mc < connectedRouters.size(); mc ++)
+            {
+                peerInfo m = connectedRouters.get(mc);
                 if(p.isMatch(m)) //Hopefulyl this will be better for cache performance
                 {
                     found = true; //We have found a match for this m.
                     //calculate new distance, and update tabel if it is <
-                    
+                    System.out.println("Match was found ");
+                    if(p.weight + weightOfConnection < m.weight)
+                    {
+                        System.out.println("Better path found");
+                        System.out.println("new: " + (p.weight + weightOfConnection) + "old: " + m.weight);
+                        m = p;
+                        m.weight += weightOfConnection;
+                        connectedRouters.set(mc, m);
+                        //update forwardingTable
+                        for(int rc = 0; rc < forwardingTable.size(); rc ++)
+                        {
+                            routes r = forwardingTable.get(rc);
+                            if(r.toThrough[0].isMatch(m))
+                            {
+                                System.out.println("To :" + r.toThrough[0].toString());
+                                System.out.println("Through :" + m.toString());
+                                r.toThrough[1] = connected;
+                                forwardingTable.set(rc, r);
+                                break;
+                            }
+                        }
+                    }
                     break;
                 }
+            }
+            if(!found)
+            {
+              System.out.println("NEw router, please add to collection");  
             }
         }
         //Updated forwarding table
@@ -193,7 +288,7 @@ public class Router
             };
             Timer timer = new Timer("MyTimer");//create a new Timer
     
-            timer.scheduleAtFixedRate(timerTask, 0, 3000);//this line starts the timer at the same time its executed
+            timer.scheduleAtFixedRate(timerTask, 0, 30000);//this line starts the timer at the same time its executed
         }
     }
     
@@ -211,9 +306,23 @@ public class Router
                     socket.receive(receivePacket);
                     System.out.println("Recieved :" + receivePacket.toString());
                     byte[] packet = receivePacket.getData();
-                    packet = removePackageHeader(packet);
-                    ArrayList<peerInfo> nodes =  convertToPeerInfoArray(packet);
-                    //calculateDistanceVector(cheese, nodes);
+                    //star
+                    String strung = new String(packet);
+                    String[] split = breakHeaderMessage(strung);
+                    
+                    //Message is a distance vector thing
+                    
+                    if(split[1].equals("b"))
+                    {
+                        
+                       peerInfo from = fromInfo(split[0]);
+                       ArrayList<peerInfo> nodes = convertToPeerInfoArray(split[2]);
+                       calculateDistanceVector(from, nodes);
+                       System.out.println("Exited calculate distance");
+                    }
+                    
+                    
+                    
                     //socket.close();
                 }
             }catch(Exception e){
@@ -261,6 +370,9 @@ public class Router
             info.weight = Integer.parseInt(tokens[2]);
             adjacentRouters.add(info);
             connectedRouters.add(info);
+            routes root = new routes();
+            root.toThrough = new peerInfo[] {info, info};
+            forwardingTable.add(root);
         }
     }
 }
@@ -291,5 +403,5 @@ class peerInfo
 
 class routes
 {
-    public peerInfo toThrough[] = new peerInfo[2];
+    public peerInfo toThrough[];
 }
