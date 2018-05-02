@@ -1,6 +1,7 @@
 import java.util.*;
 import java.net.*;
 import java.io.FileReader;
+import java.io.Console;
 /**
  * Write a description of class router here.
  * 
@@ -44,14 +45,18 @@ public class Router
         // initialise instance variables
         adjacentRouters = new ArrayList<peerInfo>();
         connectedRouters = new ArrayList<peerInfo>();
-        
         forwardingTable = new ArrayList<routes>();
+        
         readFile(args[0]);
         
         SendUpdate sendUpdate = new SendUpdate();
         RecieveMessage recieveMessage = new RecieveMessage();
+        ReadCommands readCommands = new ReadCommands();
+        
+        readCommands.run();
         sendUpdate.run();
         recieveMessage.run();
+        
     }
     
     //Creates the headers on a package
@@ -336,7 +341,14 @@ public class Router
         @Override
         public void run()
         {
-            
+            Console console = System.console();
+            if (console == null) {
+                System.out.println("No console: non-interactive mode!");
+                System.exit(0);
+            }
+            System.out.println("Runnings guns");
+            String temp = console.readLine();
+            System.out.println(temp);
         }
     }
     
